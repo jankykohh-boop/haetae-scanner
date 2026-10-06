@@ -12,7 +12,7 @@ In Korean folklore, the haetae is a guardian that protects against disaster; sta
 ```
 $ haetae . --history
 
-haetae 0.4.0 · scanned 42 files in /home/me/my-app
+haetae 0.5.0 · scanned 42 files in /home/me/my-app
 
  CRITICAL  C1 AWS access key ID — config.js:12
     AWS access key ID: AKIA…(20 chars)
@@ -78,12 +78,12 @@ To always skip some paths, list globs in a `.haetaeignore` file at the repo root
 |---|---|---|
 | C1 | **Secrets** in files and git history: private keys, AWS, GitHub, Stripe, Slack, Google, OpenAI and Anthropic keys, database URLs with passwords, JWTs, hardcoded passwords | ✅ v0.1 |
 | C3 | **Committed `.env` and key files**, and `.gitignore` gaps | ✅ v0.1 |
-| C2 | **Dependency vulnerabilities** from `package-lock.json`, `package.json`, `requirements*.txt`, `Pipfile.lock` and `poetry.lock`, checked against [OSV](https://osv.dev). One finding per package, ranked by the worst advisory, dev-only dependencies one step lower, with the smallest safe upgrade | ✅ v0.2 |
-| C4 | **Dangerous code patterns** in JS/TS/HTML and Python: `eval` / `new Function` / `exec`, shell commands built from variables, SQL built from strings, unsafe deserialization (`pickle`, `yaml.load`). Parameterised SQL with dynamic column names is reported separately, as medium | ✅ v0.3 |
-| C5 | **Insecure defaults**: debug mode on, CORS open to any origin, TLS verification turned off, well-known default passwords | ✅ v0.3 |
+| C2 | **Dependency vulnerabilities** from `package-lock.json`, `package.json`, `requirements*.txt`, `Pipfile.lock`, `poetry.lock`, Maven `pom.xml` and `gradle.lockfile`, checked against [OSV](https://osv.dev). One finding per package, ranked by the worst advisory, dev-only dependencies one step lower, with the smallest safe upgrade | ✅ v0.2, Java v0.5 |
+| C4 | **Dangerous code patterns.** JS/TS/HTML and Python: `eval` / `new Function` / `exec`, shell commands and SQL built from variables, unsafe deserialization. **Shell and Dockerfiles:** `curl … \| bash`, `eval "$var"`. **Java:** `Runtime.exec` with variables, `sh -c` via ProcessBuilder, SQL built from strings, `readObject`, weak crypto (DES/ECB, MD5/SHA-1). Parameterised SQL with dynamic column names is reported separately, as medium | ✅ v0.5 |
+| C5 | **Insecure defaults.** Debug mode, CORS open to any origin, TLS verification off (`verify=False`, `curl -k`, trust-all managers), well-known default passwords, world-writable `chmod 777`. **Terraform:** public S3 buckets and disabled public-access blocks, public databases, encryption off, IAM `Allow` on every action, IMDSv1, and security groups open to the internet, judged by direction and port (SSH, RDP and databases are high; egress and 80/443 are fine). **Spring:** all Actuator endpoints exposed, H2 console on | ✅ v0.5 |
 | C6 | **Repo hygiene** (always low): no `SECURITY.md`, `package.json` without a lockfile, nothing scanning dependencies in CI | ✅ v0.3 |
 
-When a check can't run (not a git repo, offline), the report says so. haetae never reports "clean" for something it didn't check.
+When a check can't run (not a git repo, offline), the report says so. It also names any language in the repo that the code-pattern checks don't cover yet (Go, Ruby, PHP, C#…), so a clean report is never read as more than it is. haetae never reports "clean" for something it didn't check.
 
 **What it leaves out, and says so:** files git ignores (they aren't committed, so nothing in them has leaked through the repo; `--include-ignored` scans them), and other repositories or git worktrees nested inside the one you scan (scan each on its own). Guesses from a variable name (`password = "…"`) in test files are reported as **low**, since they are almost always fixtures; recognised provider keys (AWS, GitHub, Stripe, Anthropic…) keep their full severity everywhere. Form-field words such as `autocomplete="new-password"` or a `'Password'` label, and obvious `mock-` or `stub-` values, are not reported.
 
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0          # full history, for the secrets-in-history check
-      - uses: jankykohh-boop/haetae-scanner@v0.4.0
+      - uses: jankykohh-boop/haetae-scanner@v0.5.0
 ```
 
 The report appears in the run's summary, and the step fails on anything at or above `fail-on`.
@@ -137,7 +137,7 @@ Outputs: `exit-code` (0 / 1 / 2) and `report` (path of the Markdown report).
         with:
           fetch-depth: 0
       - id: haetae
-        uses: jankykohh-boop/haetae-scanner@v0.4.0
+        uses: jankykohh-boop/haetae-scanner@v0.5.0
         with:
           sarif-file: haetae.sarif
         continue-on-error: true

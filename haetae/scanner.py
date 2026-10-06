@@ -51,6 +51,9 @@ def scan(root: str | Path, *, history: bool = False, exclude: list[str] | None =
 
     # C4 code patterns + C5 insecure defaults (one pass over the source), C6 hygiene
     result.findings += code.check(files)
+    gap = code.coverage_gaps(files)
+    if gap:
+        result.skipped.append(gap)
     result.findings += hygiene.check(root, files)
 
     # A local .env that git ignores is the right setup; say so, so nobody wonders why it was not scanned.

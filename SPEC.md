@@ -1,7 +1,7 @@
 # haetae (해태) — Product Spec
 
 **Owner:** Joshua Lee
-**Status:** v0.4.0 · M1–M4 done, plus M5 (baselines, SARIF, GitHub Action)
+**Status:** v0.5.0 · M1–M6 done
 **One-liner:** Point it at a repo; get a ranked list of security problems, with how to fix each one.
 
 ---
@@ -28,7 +28,7 @@ One command that runs a practical security checklist against any repo and answer
 - Not a replacement for a full SAST/DAST product or a penetration test.
 - No automatic fixing of code. haetae reports; a human decides.
 - No hosted service or dashboard. It's a local command-line tool.
-- No languages beyond JavaScript/TypeScript and Python in v1.
+- v1 covered JavaScript/TypeScript and Python; M6 added Shell, Terraform and Java (GitHub's Octoverse 2025 top ten guided the order).
 
 ## 5. Checks
 
@@ -107,6 +107,7 @@ Feature: Scan a repository
 | **M3** | C4 code patterns, C5 insecure defaults | False-positive rate checked on 3 real repos |
 | **M4** | C6 hygiene, JSON + Markdown output, `--fail-on`, CI example | Runs in a GitHub Actions workflow on its own repo |
 | **M5** | Adoption: `--baseline`/`--write-baseline`, SARIF output, a GitHub Action (`action.yml`), CVE ids on dependency findings | CI runs the action on this repo and validates its SARIF; baselines keep ids stable across line moves |
+| **M6** | More languages: Shell and Dockerfiles, Terraform, Java and Spring config; Maven/Gradle dependencies; a note naming languages C4/C5 don't cover | Zero false alarms on four real public repos (spring-petclinic, terraform-aws-vpc, terraform-aws-security-group, nvm) after tuning |
 
 ## 10. Decisions
 
@@ -116,3 +117,4 @@ Feature: Scan a repository
 4. **Noise from the first real repo (v0.2.1, 2026-10-06).** On a 326-file app every one of 27 findings was a false alarm: a stale git worktree inside the repo, an ignored local `.env`, test fixtures, and password-field labels. haetae now skips git-ignored files and nested repositories (and says so in the report), reports name-based guesses in test files as low, and ignores form-field vocabulary. Provider-format keys are never downgraded.
 5. **Code-pattern noise (v0.3.0, 2026-10-06).** First run of C4/C5 on the same app: 5 "SQL built from strings" were parameterised queries with dynamic column names (now their own medium rule, with an allowlist check as the fix), a `'Password'` UI label read as a weak password, and test harnesses using `new Function` were ranked medium. After the fixes: 0 high, 8 medium, 17 low, all accurate. Rules also skip matches inside string literals, so haetae's own rule definitions don't flag themselves.
 6. **Test repos are built at runtime, not committed (2026-10-06).** A checked-in vulnerable sample repo would put secret-shaped strings into this repository, tripping GitHub secret scanning and haetae's own self-scan. Each test instead assembles a throwaway git repo, with fake credentials put together from pieces at runtime, so this repo stays clean and the self-scan in CI stays meaningful.
+7. **Language noise (v0.5.0, 2026-10-06).** Run on four well-known public repos, the new rules raised three false alarms, all in Terraform: outbound rules inside an `egress_rules` map and an `aws_vpc_security_group_egress_rule` looked like open ingress, and a `Deny` on every action looked like an over-broad grant. Ingress is now judged by direction and port (80/443 are normal; SSH, RDP and database ports are high), and Deny statements are skipped. After the fixes the only code finding across all four repos is a true positive (spring-petclinic exposes every Actuator endpoint).

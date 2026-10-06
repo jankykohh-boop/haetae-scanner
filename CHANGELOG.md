@@ -2,6 +2,14 @@
 
 All notable changes to haetae. Versions follow [semantic versioning](https://semver.org).
 
+## 0.5.0 · 2026-10-06
+- **Shell and Dockerfiles:** downloads piped into a shell, `eval` of variables, TLS checks turned off, `chmod 777`.
+- **Terraform:** public S3 buckets, disabled public-access blocks, public databases, encryption off, IAM `Allow` on every action, IMDSv1, and security groups open to the internet, judged by direction and port.
+- **Java and Spring:** commands and SQL built from variables, `sh -c` via ProcessBuilder, unsafe deserialization, weak crypto, trust-all TLS, open CORS, exposed Actuator endpoints, H2 console.
+- **Java dependencies** in C2: Maven `pom.xml` (with `${property}` versions) and `gradle.lockfile`.
+- The report names languages the code-pattern checks don't cover yet.
+- Tuned on four real public repos; see SPEC decision 7.
+
 ## 0.4.0 · 2026-10-06
 - **Baselines:** `--write-baseline` accepts today's findings; `--baseline` then fails only on new ones. Ids come from what was found, not line numbers, and the file never holds secrets or code.
 - **SARIF output** (`--format sarif`) for GitHub code scanning.

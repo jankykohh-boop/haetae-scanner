@@ -12,6 +12,7 @@ import math
 import re
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -133,6 +134,71 @@ def _parse_poetry_lock(path: Path, rel: str, notes: list[str]) -> list[Package]:
     ]
 
 
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]   # drop the XML namespace
+
+
+def _child(el, name):
+    return next((c for c in el if _local(c.tag) == name), None)
+
+
+def _parse_pom(path: Path, rel: str, notes: list[str]) -> list[Package]:
+    """Direct dependencies of a Maven pom.xml, resolving ${property} versions from <properties>.
+
+    Python's bundled expat refuses external entities and caps entity expansion, so a
+    hostile pom can't read files or blow up memory.
+    """
+    root = ET.parse(path).getroot()
+    props = {}
+    pr = _child(root, "properties")
+    if pr is not None:
+        props = {_local(c.tag): (c.text or "").strip() for c in pr}
+    v = _child(root, "version")
+    if v is not None and v.text:
+        props.setdefault("project.version", v.text.strip())
+
+    def resolve(text):
+        text = (text or "").strip()
+        for _ in range(5):                       # nested properties, bounded
+            m = re.search(r"\$\{([^}]+)\}", text)
+            if not m or m.group(1) not in props:
+                break
+            text = text.replace(m.group(0), props[m.group(1)])
+        return text
+
+    out, unresolved = [], 0
+    deps = _child(root, "dependencies")
+    for dep in (deps if deps is not None else []):
+        fields = {_local(c.tag): (c.text or "").strip() for c in dep}
+        group, artifact, version = fields.get("groupId"), fields.get("artifactId"), resolve(fields.get("version"))
+        if not (group and artifact):
+            continue
+        if not version or "${" in version or version.startswith(("[", "(")):
+            unresolved += 1            # managed by a parent/BOM, or a range: can't know the exact version
+            continue
+        out.append(Package("Maven", f"{group}:{artifact}", version, rel,
+                           fields.get("scope") in ("test", "provided"), True))
+    if unresolved:
+        notes.append(f"C2: {unresolved} dependencies in {rel} get their version from a parent POM, BOM or range "
+                     "and were not checked (a gradle.lockfile or `mvn dependency:list` output would pin them)")
+    return out
+
+
+def _parse_gradle_lock(path: Path, rel: str) -> list[Package]:
+    out = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("empty="):
+            continue
+        coords, _, configs = line.partition("=")
+        parts = coords.split(":")
+        if len(parts) != 3:
+            continue
+        dev = bool(configs) and all("test" in c.lower() for c in configs.split(","))
+        out.append(Package("Maven", f"{parts[0]}:{parts[1]}", parts[2], rel, dev, None))
+    return out
+
+
 def collect(files: list[tuple[str, Path]]) -> Collected:
     """Find manifests among the scanned files and pull out pinned packages."""
     result = Collected()
@@ -154,7 +220,11 @@ def collect(files: list[tuple[str, Path]]) -> Collected:
                 result.packages += _parse_pipfile_lock(path, rel)
             elif name == "poetry.lock":
                 result.packages += _parse_poetry_lock(path, rel, result.notes)
-        except (ValueError, KeyError, TypeError) as e:
+            elif name == "pom.xml":
+                result.packages += _parse_pom(path, rel, result.notes)
+            elif name == "gradle.lockfile":
+                result.packages += _parse_gradle_lock(path, rel)
+        except (ValueError, KeyError, TypeError, ET.ParseError) as e:
             result.notes.append(f"C2: could not read {rel} ({e.__class__.__name__}); its dependencies were not checked")
 
     # same package+version pinned in several places: check it once
