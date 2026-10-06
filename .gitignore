@@ -1,0 +1,9 @@
+.env*
+!.env.example
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+docs/demo-report.html

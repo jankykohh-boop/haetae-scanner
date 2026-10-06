@@ -1,0 +1,76 @@
+name: haetae security scan
+description: "haetae (해태): a security checklist for your repository: secrets (also in history), vulnerable dependencies, risky code and insecure defaults."
+author: Joshua Lee
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  path:
+    description: Directory to scan, relative to the workspace.
+    default: "."
+  history:
+    description: Also scan every commit for secrets. Needs `fetch-depth 0` on actions/checkout.
+    default: "true"
+  fail-on:
+    description: Fail the step on findings at or above this severity (critical, high, medium, low, info).
+    default: "high"
+  offline:
+    description: Skip the dependency check instead of contacting osv.dev.
+    default: "false"
+  baseline:
+    description: Path to a baseline file (from `haetae --write-baseline`); only new findings fail the step.
+    default: ""
+  sarif-file:
+    description: Also write a SARIF report here, for github/codeql-action/upload-sarif.
+    default: ""
+  python-version:
+    description: Python used to run haetae (3.10 or newer).
+    default: "3.12"
+
+outputs:
+  exit-code:
+    description: 0 clean, 1 findings at or above fail-on, 2 error.
+    value: ${{ steps.scan.outputs.exit-code }}
+  report:
+    description: Path of the Markdown report (also shown in the job summary).
+    value: ${{ steps.scan.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - id: scan
+      shell: bash
+      # Inputs arrive as environment variables, never pasted into the script,
+      # so a crafted input can't inject shell commands.
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        HAETAE_PATH: ${{ inputs.path }}
+        HAETAE_HISTORY: ${{ inputs.history }}
+        HAETAE_FAIL_ON: ${{ inputs.fail-on }}
+        HAETAE_OFFLINE: ${{ inputs.offline }}
+        HAETAE_BASELINE: ${{ inputs.baseline }}
+        HAETAE_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        set +e
+        args=("$HAETAE_PATH" --fail-on "$HAETAE_FAIL_ON")
+        [ "$HAETAE_HISTORY" = "true" ] && args+=(--history)
+        [ "$HAETAE_OFFLINE" = "true" ] && args+=(--offline)
+        [ -n "$HAETAE_BASELINE" ] && args+=(--baseline "$HAETAE_BASELINE")
+
+        report="$RUNNER_TEMP/haetae-report.md"
+        python -m haetae "${args[@]}" --format md -o "$report"
+        code=$?
+        [ -f "$report" ] && cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ -n "$HAETAE_SARIF" ]; then
+          python -m haetae "${args[@]}" --format sarif -o "$HAETAE_SARIF" >/dev/null 2>&1 || true
+        fi
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        exit $code

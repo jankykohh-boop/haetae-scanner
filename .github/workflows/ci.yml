@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so --history can check every commit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: python -m unittest -v
+      - name: haetae scans itself
+        run: python -m haetae . --history --fail-on high
+
+  # Runs haetae through action.yml exactly as another repo would, so the action
+  # can't break without this failing.
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: haetae
+        uses: ./
+        with:
+          fail-on: high
+          sarif-file: haetae.sarif
+      - name: Action outputs and SARIF are valid
+        env:
+          EXIT_CODE: ${{ steps.haetae.outputs.exit-code }}
+          REPORT: ${{ steps.haetae.outputs.report }}
+        run: |
+          test "$EXIT_CODE" = "0"
+          test -s "$REPORT"
+          python -c "import json; d = json.load(open('haetae.sarif')); assert d['version'] == '2.1.0'; print(len(d['runs'][0]['results']), 'results')"
